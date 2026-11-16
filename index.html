@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Circuit Builder</title>
+<style>
+:root{--bg:#fff;--fg:#111;--grid:#d9dde3;--wire:#3a3a3a;--panel:#eef1f5;--btn:#fff;--bd:#b9c0cb;--acc:#1e6fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#15181d;--fg:#f2f4f7;--grid:#2b3038;--wire:#aab2bd;--panel:#1f242b;--btn:#2a3038;--bd:#47505c;--acc:#6aa5ff}}
+:root[data-theme=dark]{--bg:#15181d;--fg:#f2f4f7;--grid:#2b3038;--wire:#aab2bd;--panel:#1f242b;--btn:#2a3038;--bd:#47505c;--acc:#6aa5ff}
+html,body{height:100%;margin:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font:16px system-ui,sans-serif;overscroll-behavior:none;user-select:none;-webkit-user-select:none}
+#top{display:flex;align-items:center;background:var(--panel)}
+#lang{min-height:0;min-width:0;margin:6px 8px;padding:6px 10px;font-weight:700}
+#msg{flex:1;padding:10px 12px;font-weight:600;background:var(--panel);min-height:22px}
+#msg.bad{background:#d92d20;color:#fff}
+#board{flex:1;min-height:0;width:100%;display:block;touch-action:none;background:var(--bg)}
+#tray{display:flex;gap:8px;padding:8px;overflow-x:auto;background:var(--panel)}
+button{flex:none;min-height:56px;min-width:64px;padding:6px 12px;font:inherit;font-size:15px;border:2px solid var(--bd);border-radius:12px;background:var(--btn);color:var(--fg)}
+button:active{background:var(--acc);color:#fff}
+#world>rect{fill:url(#g);stroke:var(--bd);stroke-width:3}
+#g path{stroke:var(--grid);fill:none;stroke-width:1.5}
+.wb{fill:none;stroke:var(--wire);stroke-width:9;stroke-linecap:round;stroke-linejoin:round}
+.short .wb{stroke:#d92d20}
+.wb.sel{stroke:var(--acc)}
+.e{fill:none;stroke:#1e6fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:.1 18}
+.sh{fill:none;stroke:#d92d20;stroke-width:6}
+.gl{pointer-events:none}
+.fl{fill:#fff;pointer-events:none;animation:fl .6s ease-out forwards}
+@keyframes fl{from{opacity:.95}to{opacity:0}}
+.hit{fill:none;stroke:transparent;stroke-width:34;pointer-events:stroke}
+.hr{fill:transparent}
+.bd{fill:var(--bg);stroke:var(--wire);stroke-width:5}
+.sy{fill:none;stroke:var(--fg);stroke-width:5;stroke-linecap:round}
+.tm{fill:var(--bg);stroke:var(--fg);stroke-width:3}
+.tm.pd{fill:var(--acc)}
+.sb{fill:none;stroke:var(--acc);stroke-width:3;stroke-dasharray:8 6}
+.tl{font:700 22px system-ui;text-anchor:middle;pointer-events:none;fill:var(--fg)}
+</style></head>
+<body>
+<div id="top"><div id="msg"></div><button id="lang" onclick="tl()"></button></div>
+<svg id="board"><defs><pattern id="g" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48"/></pattern></defs>
+<g id="world"><rect width="2880" height="1920"/><g id="scene"></g></g></svg>
+<div id="tray">
+<button onclick="add('bat')">🔋 <span data-k="bat">Battery</span></button>
+<button onclick="add('bulb')">💡 <span data-k="bulb">Bulb</span></button>
+<button onclick="add('sw')">🔘 <span data-k="sw">Switch</span></button>
+<button onclick="add('sw2')">🔀 <span data-k="sw2">2-way switch</span></button>
+<button onclick="rot()">↻ <span data-k="rot">Rotate</span></button>
+<button onclick="del()">🗑 <span data-k="del">Delete</span></button>
+<button onclick="zm(1.25)">＋</button>
+<button onclick="zm(.8)">－</button>
+<button id="clr" onclick="clr()" data-k="clr">Clear all</button>
+</div>
+<script>
+const $=id=>document.getElementById(id),G=48,FW=60,FH=40,cl=(v,a,b)=>Math.min(b,Math.max(a,v));
+const D={bat:[[0,0],[2,0]],bulb:[[0,0],[2,0]],sw:[[0,0],[2,0]],sw2:[[0,1],[2,0],[2,2]]};
+let comps=[],wires=[],sel=null,pend=null,nid=1,cur={},bri={},short=false,V={x:20,y:20,s:.8},ES=[],off={},shortIds={};
+const svg=$('board'),cm=id=>comps.find(c=>c.id==id);
+const BURN=12,OB={bat:[[1,0]],bulb:[[1,0]],sw:[[1,0]],sw2:[[1,0],[1,1],[1,2],[2,1]]};
+const TX={en:{bat:'Battery',bulb:'Bulb',sw:'Switch',sw2:'2-way switch',rot:'Rotate',del:'Delete',clr:'Clear all',sure:'Sure? Tap again',lang:'ไทย',
+ m0:'Add parts below. Tap a terminal (○), then another one, to join them with a wire.',m1:'Now tap a second terminal (○) to finish the wire.',m2:'Drag to move. Tap a switch to turn it on or off.',m3:'Wire selected. Press Delete to remove it.',
+ m4:'💥 A bulb burned out: too much voltage! Tap the broken bulb to put in a new one.',m5:'⚠ Short circuit! The red battery has a path with no bulb, so the current rushes through the wires. It would get very hot!'},
+ th:{bat:'แบตเตอรี่',bulb:'หลอดไฟ',sw:'สวิตช์',sw2:'สวิตช์สองทาง',rot:'หมุน',del:'ลบ',clr:'ล้างทั้งหมด',sure:'แน่ใจไหม? แตะอีกครั้ง',lang:'EN',
+ m0:'เลือกอุปกรณ์จากด้านล่าง แล้วแตะจุดต่อ (○) จุดหนึ่ง ตามด้วยอีกจุดหนึ่ง เพื่อต่อสายไฟ',
+ m1:'ตอนนี้แตะจุดต่อ (○) จุดที่สอง เพื่อต่อสายไฟให้เสร็จ',
+ m2:'ลากเพื่อย้าย แตะสวิตช์เพื่อเปิดหรือปิด',
+ m3:'เลือกสายไฟแล้ว กดปุ่มลบเพื่อลบสายไฟ',
+ m4:'💥 หลอดไฟขาด เพราะแรงดันไฟฟ้ามากเกินไป! แตะหลอดที่เสียเพื่อเปลี่ยนเป็นหลอดใหม่',
+ m5:'⚠ ไฟฟ้าลัดวงจร! แบตเตอรี่ที่มีกรอบสีแดงมีทางให้ไฟฟ้าผ่านโดยไม่ผ่านหลอดไฟ กระแสไฟฟ้าจึงวิ่งผ่านสายไฟมากเกินไป แบตเตอรี่จะร้อนมาก!'}};
+let LG='en';try{LG=localStorage.getItem('lg')||'en'}catch(e){}
+const T=k=>TX[LG][k];
+function setLang(l){LG=l;try{localStorage.setItem('lg',l)}catch(e){}document.documentElement.lang=l;delete $('clr').dataset.s;
+ document.querySelectorAll('[data-k]').forEach(e=>e.textContent=T(e.dataset.k));$('lang').textContent='🌐 '+T('lang');R()}
+function tl(){setLang(LG=='en'?'th':'en')}
+function rg(c,p){let[x,y]=p;for(let k=0;k<c.rot;k++)[x,y]=[-y,x];return[c.x+x,c.y+y]}
+function tp(c,i){const[x,y]=rg(c,D[c.type][i]);return[x*G,y*G]}
+const tk=s=>{const[a,b]=s.split('.');return tp(cm(+a),+b)};
+
+function solve(){
+ const ix={},E=[],pos={};let n=0;const nd=k=>ix[k]??(ix[k]=n++);
+ comps.forEach(c=>D[c.type].forEach((_,i)=>{const k=c.id+'.'+i;nd(k);const p=tp(c,i)+'';if(pos[p])E.push({a:nd(pos[p]),b:nd(k),g:100});else pos[p]=k}));
+ wires.forEach(w=>E.push({a:nd(w.a),b:nd(w.b),g:100,r:'w'+w.id}));
+ comps.forEach(c=>{const a=nd(c.id+'.0'),b=nd(c.id+'.1'),r='c'+c.id;
+  if(c.type=='bat')E.push({a,b,g:10,s:15,r,bat:c.id});
+  if(c.type=='bulb'&&!c.dead)E.push({a,b,g:.1,r,bulb:c.id});
+  if(c.type=='sw'&&c.on)E.push({a,b,g:100,r});
+  if(c.type=='sw2')E.push({a,b:nd(c.id+'.'+(c.on?2:1)),g:100,r})});
+ cur={};bri={};short=false;shortIds={};if(!n)return;
+ const A=Array.from({length:n},()=>Array(n).fill(0)),z=Array(n).fill(0);
+ E.forEach(e=>{A[e.a][e.a]+=e.g;A[e.b][e.b]+=e.g;A[e.a][e.b]-=e.g;A[e.b][e.a]-=e.g;if(e.s){z[e.b]+=e.s;z[e.a]-=e.s}});
+ for(let i=0;i<n;i++)A[i][i]+=1e-9;
+ for(let i=0;i<n;i++){let m=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[m][i]))m=r;
+  [A[i],A[m]]=[A[m],A[i]];[z[i],z[m]]=[z[m],z[i]];
+  for(let r=i+1;r<n;r++){const f=A[r][i]/A[i][i];if(f){for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];z[r]-=f*z[i]}}}
+ const v=Array(n);for(let i=n-1;i>=0;i--){let s=z[i];for(let c=i+1;c<n;c++)s-=A[i][c]*v[c];v[i]=s/A[i][i]}
+ E.forEach(e=>{if(!e.r)return;let I=e.g*(v[e.a]-v[e.b]);
+  if(e.bat){I=e.s-e.g*(v[e.b]-v[e.a]);if(v[e.b]-v[e.a]<.75){short=true;shortIds[e.bat]=1}}
+  if(e.bulb)bri[e.bulb]=I*I*10/.22;
+  cur[e.r]=I})}
+
+function body(c){const k='c'+c.id,w=(d,a='')=>`<path class="wb" d="${d}"/><path class="e" ${a} d="${d}"/>`;
+ if(c.type=='bat')return`<path class="wb" d="M0 0H96"/><path class="e" data-e="${k}" d="M0 0H96"/><rect class="bd" x="28" y="-28" width="40" height="56" rx="8"/><path class="sy" d="M40 -14V14" style="stroke-width:10"/><path class="sy" d="M56 -26V26"/>`;
+ if(c.type=='bulb'){const p=bri[c.id]||0,L=c.dead||p<.06?0:cl((Math.log2(p)+4)/8,.04,1),f=`hsl(${38+14*L} 100% ${50+25*L}%)`,rr=34+70*L;if(c.dead)return`${w('M0 0H96')}<circle class="bd" cx="48" r="30" style="fill:#8a8f98"/><path class="sy" d="M34 14L42 -10M54 -10L62 14"/><path class="sy" d="M40 -2L56 6M56 -2L40 6" style="stroke:#d92d20;stroke-width:4"/>${Date.now()-c.fl<700?'<circle class="fl" cx="48" r="60"/>':''}`;return`${w('M0 0H96','data-e="'+k+'"')}${L?`<circle class="gl" cx="48" r="${rr}" fill="hsl(45 100% 55%)" opacity="${.12+.28*L}"/><circle class="gl" cx="48" r="${rr*.62}" fill="hsl(45 100% 55%)" opacity="${.2+.35*L}"/>`:''}<circle class="bd" cx="48" r="30"/>${L?`<circle cx="48" r="30" fill="${f}" opacity="${.35+.65*L}"/>`:''}<path class="sy" d="M34 14L42 -10L48 2L54 -10L62 14"/>`}
+ if(c.type=='sw'){const o=c.on;return`<path class="wb" d="M0 0H24M72 0H96"/><path class="e" data-e="${k}" d="${o?'M0 0H96':'M0 0H24M72 0H96'}"/><path class="sy" style="stroke-width:9" d="M24 0L${o?72:66} ${o?0:-28}"/><circle cx="24" r="6" class="bd"/><circle cx="72" r="6" class="bd"/>`}
+ const ty=c.on?96:0;return`<path class="wb" d="M0 48H24M72 0H96M72 96H96"/><path class="e" data-e="${k}" d="M0 48H24L72 ${ty}H96"/><path class="e" d="M72 ${96-ty}H96"/><path class="sy" style="stroke-width:9" d="M24 48L72 ${ty}"/><circle cx="24" cy="48" r="6" class="bd"/><circle cx="72" r="6" class="bd"/><circle cx="72" cy="96" r="6" class="bd"/>`}
+
+const DX=[1,0,-1,0],DY=[0,1,0,-1];
+/* find a wire path on grid points that avoids parts and other terminals; few bends, avoids earlier wires */
+function route(a,b,blk,used){
+ if(a[0]==b[0]&&a[1]==b[1])return[a];
+ const W=FW+1,H=FH+1,dist=new Map(),prev=new Map(),Q=[];
+ const push=(c,x,y,d,p)=>{const k=(y*W+x)*5+d,o=dist.get(k);if(o!==undefined&&o<=c)return;dist.set(k,c);prev.set(k,p);(Q[c]=Q[c]||[]).push([x,y,d,k])};
+ push(0,a[0],a[1],4,-1);
+ for(let c=0;c<Q.length&&c<3000;c++)for(const[x,y,d,k]of Q[c]||[]){
+  if(dist.get(k)!=c)continue;
+  if(x==b[0]&&y==b[1]){const r=[];for(let q=k;q>=0;q=prev.get(q)){const p=Math.floor(q/5);r.push([p%W,Math.floor(p/W)])}r.reverse();
+   return r.filter((p,i)=>i==0||i==r.length-1||(r[i-1][0]-p[0])*(p[1]-r[i+1][1])!=(r[i-1][1]-p[1])*(p[0]-r[i+1][0]))}
+  for(let n=0;n<4;n++){const nx=x+DX[n],ny=y+DY[n];if(nx<0||ny<0||nx>=W||ny>=H)continue;const q=ny*W+nx;
+   if(blk.has(q)&&!(nx==b[0]&&ny==b[1]))continue;
+   push(c+1+(d<4&&d!=n?3:0)+(used.has(q)?2:0),nx,ny,n,k)}}
+ return null}
+
+function R(){let nb;do{solve();nb=0;comps.forEach(c=>{if(c.type=='bulb'&&!c.dead&&bri[c.id]>BURN){c.dead=1;c.fl=Date.now();nb=1}})}while(nb);let s='',ws='';const blk=new Set(),used=new Set(),pk=p=>p[1]*(FW+1)+p[0];
+ comps.forEach(c=>{D[c.type].forEach((_,i)=>blk.add(pk(tp(c,i).map(v=>v/G))));OB[c.type].forEach(p=>blk.add(pk(rg(c,p))))});
+ wires.forEach(w=>{const a=tk(w.a).map(v=>v/G),b=tk(w.b).map(v=>v/G),r=route(a,b,blk,used);
+  const d=r?'M'+r.map(p=>p[0]*G+' '+p[1]*G).join('L'):`M${a[0]*G} ${a[1]*G}H${b[0]*G}V${b[1]*G}`;
+  if(r)r.slice(1,-1).forEach(p=>used.add(pk(p)));
+  ws+=`<g data-w="${w.id}"><path class="wb${sel&&sel.w==w.id?' sel':''}" d="${d}"/><path class="e" data-e="w${w.id}" d="${d}"/><path class="hit" d="${d}"/></g>`});
+ comps.forEach(c=>{const h=c.type=='sw2'?164:68;
+  s+=`<g data-c="${c.id}" transform="translate(${c.x*G} ${c.y*G}) rotate(${c.rot*90})">${body(c)}${shortIds[c.id]?'<rect class="sh" x="-14" y="-40" width="124" height="80" rx="12"/>':''}<rect class="hr" x="-12" y="-34" width="120" height="${h}"/>${sel&&sel.c==c.id?`<rect class="sb" x="-14" y="-36" width="124" height="${h+4}" rx="10"/>`:''}</g>`});
+ s+=ws;
+ comps.forEach(c=>D[c.type].forEach((_,i)=>{const[x,y]=tp(c,i),k=c.id+'.'+i;
+  s+=`<circle class="tm${pend==k?' pd':''}" data-t="${k}" cx="${x}" cy="${y}" r="18"/>`;
+  if(c.type=='bat')s+=`<text class="tl" x="${x}" y="${y+7}">${i?'+':'−'}</text>`}));
+ $('scene').innerHTML=s;ES=[...svg.querySelectorAll('[data-e]')];
+ svg.classList.toggle('short',short);
+ const m=$('msg');m.classList.toggle('bad',short);
+ m.textContent=short?T('m5'):
+  comps.some(c=>c.dead)?T('m4'):pend?T('m1'):
+  sel&&sel.c?T('m2'):
+  sel&&sel.w?T('m3'):
+  T('m0')}
+
+function ap(){$('world').setAttribute('transform',`translate(${V.x} ${V.y}) scale(${V.s})`)}
+function zoom(f,cx,cy){const ns=cl(V.s*f,.3,2.5);V.x=cx-(cx-V.x)*ns/V.s;V.y=cy-(cy-V.y)*ns/V.s;V.s=ns;ap()}
+function zm(f){const r=svg.getBoundingClientRect();zoom(f,r.width/2,r.height/2)}
+function add(type){const r=svg.getBoundingClientRect();
+ let x=cl(Math.round((r.width/2-V.x)/V.s/G)-1,0,FW-3),y=cl(Math.round((r.height/2-V.y)/V.s/G)-1,0,FH-4);
+ while(comps.some(c=>c.x==x&&c.y==y))y++;
+ const c={id:nid++,type,x,y,rot:0,on:0};comps.push(c);sel={c:c.id};pend=null;R()}
+function rot(){if(sel&&sel.c){const c=cm(sel.c);c.rot=(c.rot+1)%4;R()}}
+function del(){if(sel&&sel.c){const p=sel.c+'.';wires=wires.filter(w=>!w.a.startsWith(p)&&!w.b.startsWith(p));comps=comps.filter(c=>c.id!=sel.c)}
+ else if(sel&&sel.w)wires=wires.filter(w=>w.id!=sel.w);sel=null;R()}
+let ct;function clr(){const b=$('clr');if(b.dataset.s){comps=[];wires=[];sel=pend=null;b.textContent=T('clr');delete b.dataset.s;clearTimeout(ct);R()}
+ else{b.dataset.s=1;b.textContent=T('sure');ct=setTimeout(()=>{b.textContent=T('clr');delete b.dataset.s},2500)}}
+
+const P=new Map();let drag=null,pinch=null;
+const pt=e=>{const r=svg.getBoundingClientRect();return[(e.clientX-r.left-V.x)/V.s,(e.clientY-r.top-V.y)/V.s]};
+svg.onpointerdown=e=>{svg.setPointerCapture(e.pointerId);P.set(e.pointerId,{x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY});
+ if(P.size==2){drag=null;const[a,b]=[...P.values()],r=svg.getBoundingClientRect(),cx=(a.x+b.x)/2-r.left,cy=(a.y+b.y)/2-r.top;
+  pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,s:V.s,wx:(cx-V.x)/V.s,wy:(cy-V.y)/V.s};return}
+ if(P.size>2)return;
+ const t=e.target.closest('[data-t]'),c=e.target.closest('[data-c]'),w=e.target.closest('[data-w]');
+ drag={t:t&&t.dataset.t,c:!t&&c?+c.dataset.c:0,w:!t&&!c&&w?+w.dataset.w:0,m:0};
+ if(drag.c){const q=pt(e),cc=cm(drag.c);drag.dx=q[0]-cc.x*G;drag.dy=q[1]-cc.y*G}};
+svg.onpointermove=e=>{const p=P.get(e.pointerId);if(!p)return;const px=p.x,py=p.y;p.x=e.clientX;p.y=e.clientY;
+ if(pinch&&P.size>=2){const[a,b]=[...P.values()],r=svg.getBoundingClientRect(),d=Math.hypot(a.x-b.x,a.y-b.y),
+   cx=(a.x+b.x)/2-r.left,cy=(a.y+b.y)/2-r.top,ns=cl(pinch.s*d/pinch.d,.3,2.5);
+  V.s=ns;V.x=cx-pinch.wx*ns;V.y=cy-pinch.wy*ns;ap();return}
+ if(!drag)return;
+ if(Math.hypot(e.clientX-p.sx,e.clientY-p.sy)>8)drag.m=1;
+ if(!drag.m)return;
+ if(drag.c){const c=cm(drag.c),q=pt(e);c.x=cl(Math.round((q[0]-drag.dx)/G),0,FW-3);c.y=cl(Math.round((q[1]-drag.dy)/G),0,FH-3);sel={c:c.id};R()}
+ else{V.x+=e.clientX-px;V.y+=e.clientY-py;ap()}};
+svg.onpointerup=svg.onpointercancel=e=>{P.delete(e.pointerId);
+ if(pinch){if(P.size<2)pinch=null;drag=null;return}
+ const d=drag;drag=null;if(!d)return;
+ if(!d.m&&e.type=='pointerup'){
+  if(d.t){if(!pend)pend=d.t;else if(pend==d.t)pend=null;else{
+    if(!wires.some(w=>w.a==pend&&w.b==d.t||w.a==d.t&&w.b==pend))wires.push({id:nid++,a:pend,b:d.t});pend=null}sel=null}
+  else if(d.c){const c=cm(d.c);if(c.type=='sw'||c.type=='sw2')c.on=c.on?0:1;if(c.dead)c.dead=0;sel={c:c.id};pend=null}
+  else if(d.w){sel={w:d.w};pend=null}
+  else{sel=null;pend=null}}
+ else if(d.c)sel={c:d.c};
+ R()};
+svg.onwheel=e=>{e.preventDefault();zoom(e.deltaY<0?1.12:1/1.12,e.offsetX,e.offsetY)};
+
+let last=0;
+function loop(t){const dt=Math.min((t-last)/1000,.1);last=t;
+ ES.forEach(p=>{const k=p.dataset.e,i=cur[k]||0;
+  if(Math.abs(i)>.005)off[k]=(off[k]||0)+Math.sign(i)*(12+Math.min(Math.abs(i),.3)/.3*60)*dt;
+  p.style.strokeDashoffset=off[k]||0});
+ requestAnimationFrame(loop)}
+ap();setLang(LG);requestAnimationFrame(loop);
+</script></body></html>
