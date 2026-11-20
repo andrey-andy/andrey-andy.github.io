@@ -58,13 +58,14 @@ let comps=[],wires=[],sel=null,pend=null,nid=1,cur={},bri={},short=false,V={x:20
 const svg=$('board'),cm=id=>comps.find(c=>c.id==id);
 const BURN=12,OB={bat:[[1,0]],bulb:[[1,0]],sw:[[1,0]],sw2:[[1,0],[1,1],[1,2],[2,1]]};
 const TX={en:{bat:'Battery',bulb:'Bulb',sw:'Switch',sw2:'2-way switch',rot:'Rotate',del:'Delete',clr:'Clear all',sure:'Sure? Tap again',lang:'ไทย',
- m0:'Add parts below. Tap a terminal (○), then another one, to join them with a wire.',m1:'Now tap a second terminal (○) to finish the wire.',m2:'Drag to move. Tap a switch to turn it on or off.',m3:'Wire selected. Press Delete to remove it.',
+ m0:'Add parts below. Tap a terminal (○), then another one, to join them with a wire.',m1:'Now tap a second terminal (○) to finish the wire.',m2:'Drag to move. Tap a switch to turn it on or off.',m3:'Wire selected. Press Delete to remove it.',m6:'💥 A bulb is burned out. Tap it to put in a new one.',
  m4:'💥 A bulb burned out: too much voltage! Tap the broken bulb to put in a new one.',m5:'⚠ Short circuit! The red battery has a path with no bulb, so the current rushes through the wires. It would get very hot!'},
  th:{bat:'แบตเตอรี่',bulb:'หลอดไฟ',sw:'สวิตช์',sw2:'สวิตช์สองทาง',rot:'หมุน',del:'ลบ',clr:'ล้างทั้งหมด',sure:'แน่ใจไหม? แตะอีกครั้ง',lang:'EN',
  m0:'เลือกอุปกรณ์จากด้านล่าง แล้วแตะจุดต่อ (○) จุดหนึ่ง ตามด้วยอีกจุดหนึ่ง เพื่อต่อสายไฟ',
  m1:'ตอนนี้แตะจุดต่อ (○) จุดที่สอง เพื่อต่อสายไฟให้เสร็จ',
  m2:'ลากเพื่อย้าย แตะสวิตช์เพื่อเปิดหรือปิด',
  m3:'เลือกสายไฟแล้ว กดปุ่มลบเพื่อลบสายไฟ',
+ m6:'💥 หลอดไฟขาด แตะหลอดที่เสียเพื่อเปลี่ยนเป็นหลอดใหม่',
  m4:'💥 หลอดไฟขาด เพราะแรงดันไฟฟ้ามากเกินไป! แตะหลอดที่เสียเพื่อเปลี่ยนเป็นหลอดใหม่',
  m5:'⚠ ไฟฟ้าลัดวงจร! แบตเตอรี่ที่มีกรอบสีแดงมีทางให้ไฟฟ้าผ่านโดยไม่ผ่านหลอดไฟ กระแสไฟฟ้าจึงวิ่งผ่านสายไฟมากเกินไป แบตเตอรี่จะร้อนมาก!'}};
 let LG='en';try{LG=localStorage.getItem('lg')||'en'}catch(e){}
@@ -120,7 +121,7 @@ function route(a,b,blk,used){
    push(c+1+(d<4&&d!=n?3:0)+(used.has(q)?2:0),nx,ny,n,k)}}
  return null}
 
-function R(){let nb;do{solve();nb=0;comps.forEach(c=>{if(c.type=='bulb'&&!c.dead&&bri[c.id]>BURN){c.dead=1;c.fl=Date.now();nb=1}})}while(nb);let s='',ws='';const blk=new Set(),used=new Set(),pk=p=>p[1]*(FW+1)+p[0];
+function R(){let nb;do{solve();nb=0;comps.forEach(c=>{if(c.type=='bulb'&&!c.dead&&bri[c.id]>BURN){c.dead=1;c.fl=Date.now();c.v=1;nb=1}})}while(nb);let s='',ws='';const blk=new Set(),used=new Set(),pk=p=>p[1]*(FW+1)+p[0];
  comps.forEach(c=>{D[c.type].forEach((_,i)=>blk.add(pk(tp(c,i).map(v=>v/G))));OB[c.type].forEach(p=>blk.add(pk(rg(c,p))))});
  wires.forEach(w=>{const a=tk(w.a).map(v=>v/G),b=tk(w.b).map(v=>v/G),r=route(a,b,blk,used);
   const d=r?'M'+r.map(p=>p[0]*G+' '+p[1]*G).join('L'):`M${a[0]*G} ${a[1]*G}H${b[0]*G}V${b[1]*G}`;
@@ -136,7 +137,7 @@ function R(){let nb;do{solve();nb=0;comps.forEach(c=>{if(c.type=='bulb'&&!c.dead
  svg.classList.toggle('short',short);
  const m=$('msg');m.classList.toggle('bad',short);
  m.textContent=short?T('m5'):
-  comps.some(c=>c.dead)?T('m4'):pend?T('m1'):
+  comps.some(c=>c.dead&&c.v)?T('m4'):comps.some(c=>c.dead)?T('m6'):pend?T('m1'):
   sel&&sel.c?T('m2'):
   sel&&sel.w?T('m3'):
   T('m0')}
@@ -178,7 +179,7 @@ svg.onpointerup=svg.onpointercancel=e=>{P.delete(e.pointerId);
  if(!d.m&&e.type=='pointerup'){
   if(d.t){if(!pend)pend=d.t;else if(pend==d.t)pend=null;else{
     if(!wires.some(w=>w.a==pend&&w.b==d.t||w.a==d.t&&w.b==pend))wires.push({id:nid++,a:pend,b:d.t});pend=null}sel=null}
-  else if(d.c){const c=cm(d.c);if(c.type=='sw'||c.type=='sw2')c.on=c.on?0:1;if(c.dead)c.dead=0;sel={c:c.id};pend=null}
+  else if(d.c){const c=cm(d.c);if(c.type=='sw'||c.type=='sw2')c.on=c.on?0:1;if(c.type=='bulb'){c.dead=c.dead?0:1;c.fl=Date.now();c.v=0}sel={c:c.id};pend=null}
   else if(d.w){sel={w:d.w};pend=null}
   else{sel=null;pend=null}}
  else if(d.c)sel={c:d.c};
